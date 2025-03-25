@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Survey</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div id="survey-container" class="w-full max-w-2xl p-6">
+        <div id="loading" class="text-center text-xl">Loading survey...</div>
+        <div id="error" class="text-center text-red-500 text-xl hidden"></div>
+        
+        <div id="survey-content" class="hidden">
+            <div id="survey-header" class="mb-6">
+                <h1 id="survey-title" class="text-2xl font-bold text-gray-800"></h1>
+                <p id="survey-description" class="text-gray-600"></p>
+            </div>
+
+            <div id="sections-navigation" class="flex space-x-2 mb-4 hidden">
+                <!-- Sections will be dynamically added here -->
+            </div>
+
+            <div id="questions-container" class="space-y-6">
+                <!-- Questions will be dynamically added here -->
+            </div>
+
+            <div class="mt-6 flex space-x-4">
+                <button id="prev-btn" class="hidden bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400">
+                    Previous
+                </button>
+                <button id="next-btn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Next
+                </button>
+                <button id="submit-btn" class="hidden bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                    Submit Survey
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Enum for QuestionType matching backend
+        const QuestionType = {
+            SingleSelect: 0,
+            MultiSelect: 1,
+            ShortAnswer: 2,
+            LinearScale: 3,
+            FillInBlank: 4,
+            Dropdown: 5,
+            Date: 6,
+            Time: 7
+        };
+
+        class SurveyApp {
+            constructor() {
+                // this.token = this.extractTokenFromURL();
+                this.token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdXJ2ZXlJZCI6IjY3ZTFiZmQyZDk2NTFjZTJkNTg3NGU0MiIsInVzZXJJZCI6IjY3ZTE2ZTQyNTkxNzFhMGE4MGQyZjkyZSIsIm5iZiI6MTc0Mjg1MDA2NywiZXhwIjoxNzQyODUzNjY3LCJpYXQiOjE3NDI4NTAwNjd9.4hWjKiSRBrBFItqgfGeNO9B_5koH0IDqBOu-7o351t4"
+                this.surveyData = null;
+                this.currentSectionIndex = 0;
+                this.currentQuestionIndex = 0;
+                this.responses = {
+                    answers: []
+                };
+
+                this.initializeElements();
+                this.fetchSurveyData();
+            }
+
+            extractTokenFromURL() {
+                const path = window.location.pathname;
+                const parts = path.split('/');
+                return parts[parts.length - 1];
+            }
+
+            initializeElements() {
+                this.loadingEl = document.getElementById('loading');
+                this.errorEl = document.getElementById('error');
+                this.surveyContentEl = document.getElementById('survey-content');
+                this.surveyTitleEl = document.getElementById('survey-title');
+                this.surveyDescriptionEl = document.getElementById('survey-description');
+                this.sectionsNavEl = document.getElementById('sections-navigation');
+                this.questionsContainerEl = document.getElementById('questions-container');
+                this.prevBtn = document.getElementById('prev-btn');
+                this.nextBtn = document.getElementById('next-btn');
+                this.submitBtn = document.getElementById('submit-btn');
+
+                this.prevBtn.addEventListener('click', () => this.navigatePrevious());
+                this.nextBtn.addEventListener('click', () => this.navigateNext());
+                this.submitBtn.addEventListener('click', () => this.submitSurvey());
+            }
+
+            async fetchSurveyData() {
+                try {
+                    const response = await axios.get(`https://responsemanagement-1.onrender.com/api/form/${this.token}`);
+                    console.log(response);
+                    if (response.data.Success) {
+                        this.surveyData = response.data.Data;
+                        this.renderSurvey();
+                    } else {
+                        throw new Error(response.data.Message || 'Failed to fetch survey');
+                    }
+                } catch (error) {
+                    this.showError(error.message);
+                }
+            }
+
+            renderSurvey() {
+                this.loadingEl.classList.add('hidden');
+                this.surveyContentEl.classList.remove('hidden');
+
+                this.surveyTitleEl.textContent = this.surveyData.Name;
+                this.surveyDescriptionEl.textContent = this.surveyData.Description;
+
+                // Handle sections or direct questions
+                if (this.surveyData.Sections && this.surveyData.Sections.length > 0) {
+                    this.renderSections();
+                } else {
+                    this.renderQuestions(this.surveyData.Questions);
+                }
+            }
+
+            renderSections() {
+                this.sectionsNavEl.classList.remove('hidden');
+                this.surveyData.Sections.forEach((section, index) => {
+                    const sectionBtn = document.createElement('button');
+                    sectionBtn.textContent = section.Title;
+                    sectionBtn.classList.add(
+                        'px-4', 'py-2', 'rounded', 
+                        index === 0 ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-700'
+                    );
+                    sectionBtn.addEventListener('click', () => this.navigateToSection(index));
+                    this.sectionsNavEl.appendChild(sectionBtn);
+                });
+
+                this.renderQuestions(this.surveyData.Sections[0].Questions);
+            }
+
+            renderQuestions(questions) {
+                this.questionsContainerEl.innerHTML = '';
+                questions.forEach(question => {
+                    const questionEl = this.createQuestionElement(question);
+                    this.questionsContainerEl.appendChild(questionEl);
+                });
+
+                this.updateNavigation();
+            }
+
+            createQuestionElement(question) {
+                const questionContainer = document.createElement('div');
+                questionContainer.classList.add('bg-white', 'p-6', 'rounded-lg', 'shadow-md');
+
+                const questionTitle = document.createElement('h3');
+                questionTitle.textContent = question.Text;
+                questionTitle.classList.add('text-lg', 'font-semibold', 'mb-4');
+                questionContainer.appendChild(questionTitle);
+
+                switch (question.Type) {
+                    case QuestionType.SingleSelect:
+                        this.renderSingleSelect(questionContainer, question);
+                        break;
+                    case QuestionType.MultiSelect:
+                        this.renderMultiSelect(questionContainer, question);
+                        break;
+                    case QuestionType.ShortAnswer:
+                    case QuestionType.FillInBlank:
+                        this.renderTextInput(questionContainer, question);
+                        break;
+                    // Add more question type renderers as needed
+                }
+
+                return questionContainer;
+            }
+
+            renderSingleSelect(container, question) {
+                const radioGroup = document.createElement('div');
+                radioGroup.classList.add('space-y-2');
+
+                question.Options.forEach(option => {
+                    const radioWrapper = document.createElement('div');
+                    radioWrapper.classList.add('flex', 'items-center', 'space-x-2');
+
+                    const radio = document.createElement('input');
+                    radio.type = 'radio';
+                    radio.name = question.Id;
+                    radio.value = option.Id;
+                    radio.classList.add('h-4', 'w-4');
+                    radio.addEventListener('change', () => this.handleResponse(question, option));
+
+                    const label = document.createElement('label');
+                    label.textContent = option.Text;
+                    label.classList.add('text-gray-700');
+
+                    radioWrapper.appendChild(radio);
+                    radioWrapper.appendChild(label);
+                    radioGroup.appendChild(radioWrapper);
+                });
+
+                container.appendChild(radioGroup);
+            }
+
+            renderMultiSelect(container, question) {
+                const checkboxGroup = document.createElement('div');
+                checkboxGroup.classList.add('space-y-2');
+
+                question.Options.forEach(option => {
+                    const checkboxWrapper = document.createElement('div');
+                    checkboxWrapper.classList.add('flex', 'items-center', 'space-x-2');
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.name = question.Id;
+                    checkbox.value = option.Id;
+                    checkbox.classList.add('h-4', 'w-4');
+                    checkbox.addEventListener('change', () => this.handleMultiSelectResponse(question, option, checkbox.checked));
+
+                    const label = document.createElement('label');
+                    label.textContent = option.Text;
+                    label.classList.add('text-gray-700');
+
+                    checkboxWrapper.appendChild(checkbox);
+                    checkboxWrapper.appendChild(label);
+                    checkboxGroup.appendChild(checkboxWrapper);
+                });
+
+                container.appendChild(checkboxGroup);
+            }
+
+            renderTextInput(container, question) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.classList.add('w-full', 'px-3', 'py-2', 'border', 'rounded');
+                input.placeholder = 'Your answer';
+                input.addEventListener('input', (e) => this.handleTextResponse(question, e.target.value));
+
+                container.appendChild(input);
+            }
+
+            handleResponse(question, option) {
+                const existingResponseIndex = this.responses.answers.findIndex(
+                    ans => ans.questionId === question.Id
+                );
+
+                const newResponse = {
+                    questionId: question.Id,
+                    questionType: question.Type,
+                    selectedOptionId: option.Id
+                };
+
+                if (existingResponseIndex !== -1) {
+                    this.responses.answers[existingResponseIndex] = newResponse;
+                } else {
+                    this.responses.answers.push(newResponse);
+                }
+            }
+
+            handleMultiSelectResponse(question, option, isChecked) {
+                const existingResponseIndex = this.responses.answers.findIndex(
+                    ans => ans.questionId === question.Id
+                );
+
+                if (existingResponseIndex !== -1) {
+                    const currentResponse = this.responses.answers[existingResponseIndex];
+                    if (isChecked) {
+                        currentResponse.selectedOptionIds = 
+                            [...(currentResponse.selectedOptionIds || []), option.Id];
+                    } else {
+                        currentResponse.selectedOptionIds = 
+                            (currentResponse.selectedOptionIds || [])
+                                .filter(id => id !== option.Id);
+                    }
+                } else if (isChecked) {
+                    this.responses.answers.push({
+                        questionId: question.Id,
+                        questionType: question.Type,
+                        selectedOptionIds: [option.Id]
+                    });
+                }
+            }
+
+            handleTextResponse(question, value) {
+                const existingResponseIndex = this.responses.answers.findIndex(
+                    ans => ans.questionId === question.Id
+                );
+
+                const newResponse = {
+                    questionId: question.Id,
+                    questionType: question.Type,
+                    textValue: value
+                };
+
+                if (existingResponseIndex !== -1) {
+                    this.responses.answers[existingResponseIndex] = newResponse;
+                } else {
+                    this.responses.answers.push(newResponse);
+                }
+            }
+
+            navigateToSection(sectionIndex) {
+                this.currentSectionIndex = sectionIndex;
+                const questions = this.surveyData.Sections[sectionIndex].Questions;
+                this.renderQuestions(questions);
+            }
+
+            updateNavigation() {
+                // Update section button styles
+                if (this.surveyData.Sections) {
+                    Array.from(this.sectionsNavEl.children).forEach((btn, index) => {
+                        btn.classList.toggle('bg-blue-500', index === this.currentSectionIndex);
+                        btn.classList.toggle('text-white', index === this.currentSectionIndex);
+                        btn.classList.toggle('bg-gray-300', index !== this.currentSectionIndex);
+                        btn.classList.toggle('text-gray-700', index !== this.currentSectionIndex);
+                    });
+                }
+
+                // Update previous/next/submit buttons
+                const isLastSection = !this.surveyData.Sections || 
+                    this.currentSectionIndex === this.surveyData.Sections.length - 1;
+
+                this.prevBtn.classList.toggle('hidden', this.currentSectionIndex === 0);
+                this.nextBtn.classList.toggle('hidden', isLastSection);
+                this.submitBtn.classList.toggle('hidden', !isLastSection);
+            }
+
+            navigatePrevious() {
+                if (this.surveyData.Sections) {
+                    if (this.currentSectionIndex > 0) {
+                        this.currentSectionIndex--;
+                        this.renderQuestions(this.surveyData.Sections[this.currentSectionIndex].Questions);
+                    }
+                }
+            }
+
+            navigateNext() {
+                if (this.surveyData.Sections) {
+                    if (this.currentSectionIndex < this.surveyData.Sections.length - 1) {
+                        this.currentSectionIndex++;
+                        this.renderQuestions(this.surveyData.Sections[this.currentSectionIndex].Questions);
+                    }
+                }
+            }
+
+            async submitSurvey() {
+                try {
+                    const response = await axios.post(
+                        `https://responsemanagement-1.onrender.com/api/submit/${this.token}`, 
+                        this.responses
+                    );
+
+                    if (response.data.Success) {
+                        this.showSuccess('Survey submitted successfully!');
+                    } else {
+                        throw new Error(response.data.Message || 'Failed to submit survey');
+                    }
+                } catch (error) {
+                    this.showError(error.message);
+                }
+            }
+
+            showError(message) {
+                this.loadingEl.classList.add('hidden');
+                this.errorEl.textContent = message;
+                this.errorEl.classList.remove('hidden');
+            }
+
+            showSuccess(message) {
+                this.surveyContentEl.innerHTML = `
+                    <div class="text-center text-green-600 text-2xl">
+                        ${message}
+                    </div>
+                `;
+            }
+        }
+
+        // Initialize the survey app when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new SurveyApp();
+        });
+    </script>
+</body>
+</html>
