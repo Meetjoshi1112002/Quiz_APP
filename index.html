@@ -1,322 +1,322 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Survey</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aptitude Assessment Quiz</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-</head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
-    <div id="survey-container" class="w-full max-w-2xl p-6">
-        <div id="loading" class="text-center text-xl">Loading survey...</div>
-        <div id="error" class="text-center text-red-500 text-xl hidden"></div>
-        
-        <div id="survey-content" class="hidden">
-            <div id="survey-header" class="mb-6">
-                <h1 id="survey-title" class="text-2xl font-bold text-gray-800"></h1>
-                <p id="survey-description" class="text-gray-600"></p>
-            </div>
+  </head>
+  <body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div class="w-full max-w-3xl p-6">
+      <div id="loading" class="text-center text-xl">Loading quiz...</div>
 
-            <div id="questions-container" class="space-y-6">
-                <!-- Questions will be dynamically added here -->
-            </div>
+      <div id="error" class="text-center text-red-500 text-xl hidden"></div>
 
-            <div class="mt-6 flex space-x-4">
-                <button id="submit-btn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
-                    Submit Survey
-                </button>
-            </div>
+      <div id="quiz-container" class="hidden">
+        <div class="bg-white shadow-md rounded-lg p-8">
+          <h1
+            id="quiz-title"
+            class="text-3xl font-bold text-gray-800 mb-4"
+          ></h1>
+          <p id="quiz-description" class="text-gray-600 mb-6"></p>
+
+          <div
+            id="timer"
+            class="text-right text-lg font-semibold mb-4 text-red-500"
+          >
+            Time Remaining: <span id="timer-display">00:00</span>
+          </div>
+
+          <div id="sections-container"></div>
+
+          <button
+            id="submit-btn"
+            class="mt-6 w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 transition"
+          >
+            Submit Quiz
+          </button>
         </div>
+      </div>
     </div>
 
     <script>
-        class SurveyApp {
-            constructor() {
-                // Extract token from URL parameters
-                const urlParams = new URLSearchParams(window.location.search);
-                this.token = urlParams.get('token');
+      class QuizApp {
+        constructor() {
+          // Extract token from URL
+          this.token = new URLSearchParams(window.location.search).get("token");
 
-                // UI Elements
-                this.loadingEl = document.getElementById('loading');
-                this.errorEl = document.getElementById('error');
-                this.surveyContentEl = document.getElementById('survey-content');
-                this.surveyTitleEl = document.getElementById('survey-title');
-                this.surveyDescriptionEl = document.getElementById('survey-description');
-                this.questionsContainerEl = document.getElementById('questions-container');
-                this.submitBtn = document.getElementById('submit-btn');
+          // UI Elements
+          this.loadingEl = document.getElementById("loading");
+          this.errorEl = document.getElementById("error");
+          this.quizContainerEl = document.getElementById("quiz-container");
+          this.quizTitleEl = document.getElementById("quiz-title");
+          this.quizDescriptionEl = document.getElementById("quiz-description");
+          this.sectionsContainerEl =
+            document.getElementById("sections-container");
+          this.submitBtn = document.getElementById("submit-btn");
+          this.timerDisplayEl = document.getElementById("timer-display");
 
-                // Survey state
-                this.surveyData = null;
-                this.responses = { answers: [] };
+          // Quiz state
+          this.quizData = null;
+          this.responses = { answers: [] };
+          this.remainingTime = 0;
+          this.timerInterval = null;
 
-                // Event listeners
-                this.submitBtn.addEventListener('click', () => this.submitSurvey());
+          // Initialize
+          this.submitBtn.addEventListener("click", () => this.submitQuiz());
+          this.fetchQuizData();
+        }
 
-                // Start survey process
-                this.validateAndFetchSurvey();
+        async fetchQuizData() {
+          if (!this.token) {
+            this.showError("Invalid quiz token");
+            return;
+          }
+
+          try {
+            const response = await axios.get(
+              `https://responsemanagement-1.onrender.com/api/form/${this.token}`
+            );
+
+            if (response.data.success) {
+              this.quizData = response.data.data;
+              this.renderQuiz();
+              this.startTimer();
+            } else {
+              throw new Error("Failed to fetch quiz");
+            }
+          } catch (error) {
+            this.showError(error.message || "Unable to load quiz");
+          }
+        }
+
+        renderQuiz() {
+          const quiz = this.quizData.quiz;
+
+          // Set quiz title and description
+          this.quizTitleEl.textContent = quiz.name;
+          this.quizDescriptionEl.textContent = quiz.description;
+
+          // Render sections
+          this.sectionsContainerEl.innerHTML = "";
+          quiz.sections.forEach((section, index) => {
+            const sectionEl = this.createSectionElement(section, index);
+            this.sectionsContainerEl.appendChild(sectionEl);
+          });
+
+          // Show quiz container
+          this.loadingEl.classList.add("hidden");
+          this.quizContainerEl.classList.remove("hidden");
+        }
+
+        createSectionElement(section, sectionIndex) {
+          const sectionContainer = document.createElement("div");
+          sectionContainer.classList.add("mb-8");
+
+          const sectionTitle = document.createElement("h2");
+          sectionTitle.textContent = section.title;
+          sectionTitle.classList.add("text-2xl", "font-semibold", "mb-4");
+          sectionContainer.appendChild(sectionTitle);
+
+          section.questions.forEach((question, questionIndex) => {
+            const questionEl = this.createQuestionElement(
+              question,
+              sectionIndex,
+              questionIndex
+            );
+            sectionContainer.appendChild(questionEl);
+          });
+
+          return sectionContainer;
+        }
+
+        createQuestionElement(question, sectionIndex, questionIndex) {
+          const questionContainer = document.createElement("div");
+          questionContainer.classList.add(
+            "bg-white",
+            "p-4",
+            "rounded-lg",
+            "shadow-sm",
+            "mb-4"
+          );
+
+          const questionText = document.createElement("p");
+          questionText.textContent = question.text;
+          questionText.classList.add("text-lg", "mb-3");
+          questionContainer.appendChild(questionText);
+
+          // Render based on question type
+          switch (question.type) {
+            case 0: // Single Select
+              this.renderSingleSelect(questionContainer, question);
+              break;
+            case 4: // Fill in Blank
+              this.renderTextInput(questionContainer, question);
+              break;
+          }
+
+          return questionContainer;
+        }
+
+        renderSingleSelect(container, question) {
+          const optionsContainer = document.createElement("div");
+          optionsContainer.classList.add("space-y-2");
+
+          question.options.forEach((option) => {
+            const radioWrapper = document.createElement("div");
+            radioWrapper.classList.add("flex", "items-center");
+
+            const radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = `question-${question.id}`;
+            radio.value = option.id;
+            radio.classList.add("mr-2");
+            radio.addEventListener("change", () =>
+              this.handleSingleSelectResponse(question, option)
+            );
+
+            const label = document.createElement("label");
+            label.textContent = option.text;
+            label.classList.add("text-gray-700");
+
+            radioWrapper.appendChild(radio);
+            radioWrapper.appendChild(label);
+            optionsContainer.appendChild(radioWrapper);
+          });
+
+          container.appendChild(optionsContainer);
+        }
+
+        renderTextInput(container, question) {
+          const input = document.createElement("input");
+          input.type = "text";
+          input.placeholder = "Your answer";
+          input.classList.add("w-full", "px-3", "py-2", "border", "rounded");
+          input.addEventListener("input", (e) =>
+            this.handleTextResponse(question, e.target.value)
+          );
+
+          container.appendChild(input);
+        }
+
+        handleSingleSelectResponse(question, option) {
+          const existingIndex = this.responses.answers.findIndex(
+            (ans) => ans.questionId === question.id
+          );
+
+          const response = {
+            questionId: question.id,
+            questionType: question.type,
+            SelectedOptionId: option.id, // Changed from selectedOptionId to SelectedOptionId
+          };
+
+          if (existingIndex !== -1) {
+            this.responses.answers[existingIndex] = response;
+          } else {
+            this.responses.answers.push(response);
+          }
+        }
+
+        handleTextResponse(question, value) {
+          const existingIndex = this.responses.answers.findIndex(
+            (ans) => ans.questionId === question.id
+          );
+
+          const response = {
+            questionId: question.id,
+            questionType: question.type,
+            TextValue: value, // Changed from textValue to TextValue
+          };
+
+          if (existingIndex !== -1) {
+            this.responses.answers[existingIndex] = response;
+          } else {
+            this.responses.answers.push(response);
+          }
+        }
+
+        startTimer() {
+          this.remainingTime = this.quizData.remainingMinutes * 60; // Convert to seconds
+          this.updateTimerDisplay();
+
+          this.timerInterval = setInterval(() => {
+            this.remainingTime--;
+
+            if (this.remainingTime <= 0) {
+              clearInterval(this.timerInterval);
+              this.submitQuiz();
             }
 
-            async validateAndFetchSurvey() {
-                // Validate token
-                if (!this.token) {
-                    this.showError('No survey token found. Please check the URL.');
-                    return;
-                }
+            this.updateTimerDisplay();
+          }, 1000);
+        }
 
-                try {
-                    // Fetch survey data
-                    const response = await axios.get(
-                        `https://responsemanagement-1.onrender.com/api/form/${this.token}`
-                    );
+        updateTimerDisplay() {
+          const minutes = Math.floor(this.remainingTime / 60);
+          const seconds = this.remainingTime % 60;
+          this.timerDisplayEl.textContent = `${minutes
+            .toString()
+            .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+        }
 
-                    // Check response
-                    if (response.data.Success) {
-                        this.surveyData = response.data.Data;
-                        this.renderSurvey();
-                    } else {
-                        throw new Error(response.data.Message || 'Failed to fetch survey');
-                    }
-                } catch (error) {
-                    this.showError(
-                        error.response 
-                            ? error.response.data.Message || 'Failed to load survey' 
-                            : error.message
-                    );
-                }
+        async submitQuiz() {
+          if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+          }
+
+          if (this.responses.answers.length === 0) {
+            this.showError("Please answer at least one question");
+            return;
+          }
+
+          try {
+            const response = await axios.post(
+              `https://responsemanagement-1.onrender.com/api/submit/form/${this.token}`,
+              this.responses
+            );
+
+            if (response.data.success) {
+              this.showSuccess(
+                "Quiz submitted successfully! your marks are " +
+                  response.data.score +
+                  "out of " +
+                  response.data.totalPossibleScore +
+                  " with precentage " +
+                  response.data.percentage
+              );
+            } else {
+              throw new Error(response.data.Message || "Failed to submit quiz");
             }
+          } catch (error) {
+            this.showError(error.message || "Submission failed");
+          }
+        }
 
-            renderSurvey() {
-                // Hide loading, show survey content
-                this.loadingEl.classList.add('hidden');
-                this.surveyContentEl.classList.remove('hidden');
-
-                // Set survey title and description
-                this.surveyTitleEl.textContent = this.surveyData.Name;
-                this.surveyDescriptionEl.textContent = this.surveyData.Description;
-
-                // Render questions
-                this.renderQuestions(this.surveyData.Questions);
-            }
-
-            renderQuestions(questions) {
-                this.questionsContainerEl.innerHTML = '';
-                questions.forEach(question => {
-                    const questionEl = this.createQuestionElement(question);
-                    this.questionsContainerEl.appendChild(questionEl);
-                });
-            }
-
-            createQuestionElement(question) {
-                const questionContainer = document.createElement('div');
-                questionContainer.classList.add('bg-white', 'p-6', 'rounded-lg', 'shadow-md', 'mb-4');
-
-                const questionTitle = document.createElement('h3');
-                questionTitle.textContent = question.Text;
-                questionTitle.classList.add('text-lg', 'font-semibold', 'mb-4');
-                questionContainer.appendChild(questionTitle);
-
-                // Render input based on question type
-                switch (question.Type) {
-                    case 0: // Single Select
-                        this.renderSingleSelect(questionContainer, question);
-                        break;
-                    case 1: // Multi Select
-                        this.renderMultiSelect(questionContainer, question);
-                        break;
-                    case 2: // Short Answer
-                    case 4: // Fill in Blank
-                        this.renderTextInput(questionContainer, question);
-                        break;
-                }
-
-                return questionContainer;
-            }
-
-            renderSingleSelect(container, question) {
-                const radioGroup = document.createElement('div');
-                radioGroup.classList.add('space-y-2');
-
-                question.Options.forEach(option => {
-                    const radioWrapper = document.createElement('div');
-                    radioWrapper.classList.add('flex', 'items-center', 'space-x-2');
-
-                    const radio = document.createElement('input');
-                    radio.type = 'radio';
-                    radio.name = question.Id;
-                    radio.value = option.Id;
-                    radio.classList.add('h-4', 'w-4');
-                    radio.addEventListener('change', () => this.handleSingleSelectResponse(question, option));
-
-                    const label = document.createElement('label');
-                    label.textContent = option.Text;
-                    label.classList.add('text-gray-700', 'ml-2');
-
-                    radioWrapper.appendChild(radio);
-                    radioWrapper.appendChild(label);
-                    radioGroup.appendChild(radioWrapper);
-                });
-
-                container.appendChild(radioGroup);
-            }
-
-            renderMultiSelect(container, question) {
-                const checkboxGroup = document.createElement('div');
-                checkboxGroup.classList.add('space-y-2');
-
-                question.Options.forEach(option => {
-                    const checkboxWrapper = document.createElement('div');
-                    checkboxWrapper.classList.add('flex', 'items-center', 'space-x-2');
-
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.name = question.Id;
-                    checkbox.value = option.Id;
-                    checkbox.classList.add('h-4', 'w-4');
-                    checkbox.addEventListener('change', (e) => this.handleMultiSelectResponse(question, option, e.target.checked));
-
-                    const label = document.createElement('label');
-                    label.textContent = option.Text;
-                    label.classList.add('text-gray-700', 'ml-2');
-
-                    checkboxWrapper.appendChild(checkbox);
-                    checkboxWrapper.appendChild(label);
-                    checkboxGroup.appendChild(checkboxWrapper);
-                });
-
-                container.appendChild(checkboxGroup);
-            }
-
-            renderTextInput(container, question) {
-                const input = document.createElement('input');
-                input.type = 'text';
-                input.classList.add('w-full', 'px-3', 'py-2', 'border', 'rounded');
-                input.placeholder = 'Your answer';
-                input.addEventListener('input', (e) => this.handleTextResponse(question, e.target.value));
-
-                container.appendChild(input);
-            }
-
-            handleSingleSelectResponse(question, option) {
-                const existingResponseIndex = this.responses.answers.findIndex(
-                    ans => ans.questionId === question.Id
-                );
-
-                const newResponse = {
-                    questionId: question.Id,
-                    questionType: question.Type,
-                    selectedOptionId: option.Id
-                };
-
-                if (existingResponseIndex !== -1) {
-                    this.responses.answers[existingResponseIndex] = newResponse;
-                } else {
-                    this.responses.answers.push(newResponse);
-                }
-            }
-
-            handleMultiSelectResponse(question, option, isChecked) {
-                const existingResponseIndex = this.responses.answers.findIndex(
-                    ans => ans.questionId === question.Id
-                );
-
-                if (existingResponseIndex !== -1) {
-                    const currentResponse = this.responses.answers[existingResponseIndex];
-                    if (isChecked) {
-                        currentResponse.selectedOptionIds = 
-                            [...(currentResponse.selectedOptionIds || []), option.Id];
-                    } else {
-                        currentResponse.selectedOptionIds = 
-                            (currentResponse.selectedOptionIds || [])
-                                .filter(id => id !== option.Id);
-                    }
-                } else if (isChecked) {
-                    this.responses.answers.push({
-                        questionId: question.Id,
-                        questionType: question.Type,
-                        selectedOptionIds: [option.Id]
-                    });
-                }
-            }
-
-            handleTextResponse(question, value) {
-                const existingResponseIndex = this.responses.answers.findIndex(
-                    ans => ans.questionId === question.Id
-                );
-
-                const newResponse = {
-                    questionId: question.Id,
-                    questionType: question.Type,
-                    textValue: value
-                };
-
-                if (existingResponseIndex !== -1) {
-                    this.responses.answers[existingResponseIndex] = newResponse;
-                } else {
-                    this.responses.answers.push(newResponse);
-                }
-            }
-
-            async submitSurvey() {
-                // Validate responses and token
-                if (!this.token) {
-                    this.showError('Invalid survey token');
-                    return;
-                }
-
-                if (this.responses.answers.length === 0) {
-                    this.showError('Please answer at least one question');
-                    return;
-                }
-
-                try {
-                    const response = await axios.post(
-                        `https://responsemanagement-1.onrender.com/api/submit/${this.token}`, 
-                        this.responses
-                    );
-
-                    if (response.data.Success) {
-                        this.showSuccess('Survey submitted successfully!');
-                    } else {
-                        throw new Error(response.data.Message || 'Failed to submit survey');
-                    }
-                } catch (error) {
-                    this.showError(
-                        error.response 
-                            ? error.response.data.Message || 'Failed to submit survey' 
-                            : error.message
-                    );
-                }
-            }
-
-            showError(message) {
-                console.error('Survey Error:', message);
-                
-                this.loadingEl.classList.add('hidden');
-                this.surveyContentEl.classList.add('hidden');
-                
-                this.errorEl.innerHTML = `
+        showError(message) {
+          this.errorEl.innerHTML = `
                     <div class="text-center">
                         <p class="text-red-500 text-xl mb-4">${message}</p>
-                        <p class="text-gray-600">Please check the survey link and try again.</p>
+                        <p class="text-gray-600">Please try again.</p>
                     </div>
                 `;
-                this.errorEl.classList.remove('hidden');
-            }
+          this.errorEl.classList.remove("hidden");
+          this.quizContainerEl.classList.add("hidden");
+        }
 
-            showSuccess(message) {
-                this.surveyContentEl.innerHTML = `
+        showSuccess(message) {
+          this.quizContainerEl.innerHTML = `
                     <div class="text-center text-green-600 text-2xl">
                         ${message}
                     </div>
                 `;
-            }
         }
+      }
 
-        // Initialize the survey app when the page loads
-        document.addEventListener('DOMContentLoaded', () => {
-            new SurveyApp();
-        });
+      // Initialize the quiz app
+      document.addEventListener("DOMContentLoaded", () => {
+        new QuizApp();
+      });
     </script>
-</body>
+  </body>
 </html>
