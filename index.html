@@ -18,22 +18,12 @@
                 <p id="survey-description" class="text-gray-600"></p>
             </div>
 
-            <div id="sections-navigation" class="flex space-x-2 mb-4 hidden">
-                <!-- Sections will be dynamically added here -->
-            </div>
-
             <div id="questions-container" class="space-y-6">
                 <!-- Questions will be dynamically added here -->
             </div>
 
             <div class="mt-6 flex space-x-4">
-                <button id="prev-btn" class="hidden bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400">
-                    Previous
-                </button>
-                <button id="next-btn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                    Next
-                </button>
-                <button id="submit-btn" class="hidden bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                <button id="submit-btn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
                     Submit Survey
                 </button>
             </div>
@@ -41,60 +31,46 @@
     </div>
 
     <script>
-        // Enum for QuestionType matching backend
-        const QuestionType = {
-            SingleSelect: 0,
-            MultiSelect: 1,
-            ShortAnswer: 2,
-            LinearScale: 3,
-            FillInBlank: 4,
-            Dropdown: 5,
-            Date: 6,
-            Time: 7
-        };
-
         class SurveyApp {
             constructor() {
-                this.token = this.extractTokenFromURL();
-                //this.token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdXJ2ZXlJZCI6IjY3ZTFiZmQyZDk2NTFjZTJkNTg3NGU0MiIsInVzZXJJZCI6IjY3ZTE2ZTQyNTkxNzFhMGE4MGQyZjkyZSIsIm5iZiI6MTc0Mjg1MDA2NywiZXhwIjoxNzQyODUzNjY3LCJpYXQiOjE3NDI4NTAwNjd9.4hWjKiSRBrBFItqgfGeNO9B_5koH0IDqBOu-7o351t4"
-                this.surveyData = null;
-                this.currentSectionIndex = 0;
-                this.currentQuestionIndex = 0;
-                this.responses = {
-                    answers: []
-                };
+                // Extract token from URL parameters
+                const urlParams = new URLSearchParams(window.location.search);
+                this.token = urlParams.get('token');
 
-                this.initializeElements();
-                this.fetchSurveyData();
-            }
-
-            extractTokenFromURL() {
-                const path = window.location.pathname;
-                const parts = path.split('/');
-                return parts[parts.length - 1];
-            }
-
-            initializeElements() {
+                // UI Elements
                 this.loadingEl = document.getElementById('loading');
                 this.errorEl = document.getElementById('error');
                 this.surveyContentEl = document.getElementById('survey-content');
                 this.surveyTitleEl = document.getElementById('survey-title');
                 this.surveyDescriptionEl = document.getElementById('survey-description');
-                this.sectionsNavEl = document.getElementById('sections-navigation');
                 this.questionsContainerEl = document.getElementById('questions-container');
-                this.prevBtn = document.getElementById('prev-btn');
-                this.nextBtn = document.getElementById('next-btn');
                 this.submitBtn = document.getElementById('submit-btn');
 
-                this.prevBtn.addEventListener('click', () => this.navigatePrevious());
-                this.nextBtn.addEventListener('click', () => this.navigateNext());
+                // Survey state
+                this.surveyData = null;
+                this.responses = { answers: [] };
+
+                // Event listeners
                 this.submitBtn.addEventListener('click', () => this.submitSurvey());
+
+                // Start survey process
+                this.validateAndFetchSurvey();
             }
 
-            async fetchSurveyData() {
+            async validateAndFetchSurvey() {
+                // Validate token
+                if (!this.token) {
+                    this.showError('No survey token found. Please check the URL.');
+                    return;
+                }
+
                 try {
-                    const response = await axios.get(`https://responsemanagement-1.onrender.com/api/form/${this.token}`);
-                    console.log(response);
+                    // Fetch survey data
+                    const response = await axios.get(
+                        `https://responsemanagement-1.onrender.com/api/form/${this.token}`
+                    );
+
+                    // Check response
                     if (response.data.Success) {
                         this.surveyData = response.data.Data;
                         this.renderSurvey();
@@ -102,39 +78,25 @@
                         throw new Error(response.data.Message || 'Failed to fetch survey');
                     }
                 } catch (error) {
-                    this.showError(error.message);
+                    this.showError(
+                        error.response 
+                            ? error.response.data.Message || 'Failed to load survey' 
+                            : error.message
+                    );
                 }
             }
 
             renderSurvey() {
+                // Hide loading, show survey content
                 this.loadingEl.classList.add('hidden');
                 this.surveyContentEl.classList.remove('hidden');
 
+                // Set survey title and description
                 this.surveyTitleEl.textContent = this.surveyData.Name;
                 this.surveyDescriptionEl.textContent = this.surveyData.Description;
 
-                // Handle sections or direct questions
-                if (this.surveyData.Sections && this.surveyData.Sections.length > 0) {
-                    this.renderSections();
-                } else {
-                    this.renderQuestions(this.surveyData.Questions);
-                }
-            }
-
-            renderSections() {
-                this.sectionsNavEl.classList.remove('hidden');
-                this.surveyData.Sections.forEach((section, index) => {
-                    const sectionBtn = document.createElement('button');
-                    sectionBtn.textContent = section.Title;
-                    sectionBtn.classList.add(
-                        'px-4', 'py-2', 'rounded', 
-                        index === 0 ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-700'
-                    );
-                    sectionBtn.addEventListener('click', () => this.navigateToSection(index));
-                    this.sectionsNavEl.appendChild(sectionBtn);
-                });
-
-                this.renderQuestions(this.surveyData.Sections[0].Questions);
+                // Render questions
+                this.renderQuestions(this.surveyData.Questions);
             }
 
             renderQuestions(questions) {
@@ -143,31 +105,29 @@
                     const questionEl = this.createQuestionElement(question);
                     this.questionsContainerEl.appendChild(questionEl);
                 });
-
-                this.updateNavigation();
             }
 
             createQuestionElement(question) {
                 const questionContainer = document.createElement('div');
-                questionContainer.classList.add('bg-white', 'p-6', 'rounded-lg', 'shadow-md');
+                questionContainer.classList.add('bg-white', 'p-6', 'rounded-lg', 'shadow-md', 'mb-4');
 
                 const questionTitle = document.createElement('h3');
                 questionTitle.textContent = question.Text;
                 questionTitle.classList.add('text-lg', 'font-semibold', 'mb-4');
                 questionContainer.appendChild(questionTitle);
 
+                // Render input based on question type
                 switch (question.Type) {
-                    case QuestionType.SingleSelect:
+                    case 0: // Single Select
                         this.renderSingleSelect(questionContainer, question);
                         break;
-                    case QuestionType.MultiSelect:
+                    case 1: // Multi Select
                         this.renderMultiSelect(questionContainer, question);
                         break;
-                    case QuestionType.ShortAnswer:
-                    case QuestionType.FillInBlank:
+                    case 2: // Short Answer
+                    case 4: // Fill in Blank
                         this.renderTextInput(questionContainer, question);
                         break;
-                    // Add more question type renderers as needed
                 }
 
                 return questionContainer;
@@ -186,11 +146,11 @@
                     radio.name = question.Id;
                     radio.value = option.Id;
                     radio.classList.add('h-4', 'w-4');
-                    radio.addEventListener('change', () => this.handleResponse(question, option));
+                    radio.addEventListener('change', () => this.handleSingleSelectResponse(question, option));
 
                     const label = document.createElement('label');
                     label.textContent = option.Text;
-                    label.classList.add('text-gray-700');
+                    label.classList.add('text-gray-700', 'ml-2');
 
                     radioWrapper.appendChild(radio);
                     radioWrapper.appendChild(label);
@@ -213,11 +173,11 @@
                     checkbox.name = question.Id;
                     checkbox.value = option.Id;
                     checkbox.classList.add('h-4', 'w-4');
-                    checkbox.addEventListener('change', () => this.handleMultiSelectResponse(question, option, checkbox.checked));
+                    checkbox.addEventListener('change', (e) => this.handleMultiSelectResponse(question, option, e.target.checked));
 
                     const label = document.createElement('label');
                     label.textContent = option.Text;
-                    label.classList.add('text-gray-700');
+                    label.classList.add('text-gray-700', 'ml-2');
 
                     checkboxWrapper.appendChild(checkbox);
                     checkboxWrapper.appendChild(label);
@@ -237,7 +197,7 @@
                 container.appendChild(input);
             }
 
-            handleResponse(question, option) {
+            handleSingleSelectResponse(question, option) {
                 const existingResponseIndex = this.responses.answers.findIndex(
                     ans => ans.questionId === question.Id
                 );
@@ -297,51 +257,18 @@
                 }
             }
 
-            navigateToSection(sectionIndex) {
-                this.currentSectionIndex = sectionIndex;
-                const questions = this.surveyData.Sections[sectionIndex].Questions;
-                this.renderQuestions(questions);
-            }
-
-            updateNavigation() {
-                // Update section button styles
-                if (this.surveyData.Sections) {
-                    Array.from(this.sectionsNavEl.children).forEach((btn, index) => {
-                        btn.classList.toggle('bg-blue-500', index === this.currentSectionIndex);
-                        btn.classList.toggle('text-white', index === this.currentSectionIndex);
-                        btn.classList.toggle('bg-gray-300', index !== this.currentSectionIndex);
-                        btn.classList.toggle('text-gray-700', index !== this.currentSectionIndex);
-                    });
-                }
-
-                // Update previous/next/submit buttons
-                const isLastSection = !this.surveyData.Sections || 
-                    this.currentSectionIndex === this.surveyData.Sections.length - 1;
-
-                this.prevBtn.classList.toggle('hidden', this.currentSectionIndex === 0);
-                this.nextBtn.classList.toggle('hidden', isLastSection);
-                this.submitBtn.classList.toggle('hidden', !isLastSection);
-            }
-
-            navigatePrevious() {
-                if (this.surveyData.Sections) {
-                    if (this.currentSectionIndex > 0) {
-                        this.currentSectionIndex--;
-                        this.renderQuestions(this.surveyData.Sections[this.currentSectionIndex].Questions);
-                    }
-                }
-            }
-
-            navigateNext() {
-                if (this.surveyData.Sections) {
-                    if (this.currentSectionIndex < this.surveyData.Sections.length - 1) {
-                        this.currentSectionIndex++;
-                        this.renderQuestions(this.surveyData.Sections[this.currentSectionIndex].Questions);
-                    }
-                }
-            }
-
             async submitSurvey() {
+                // Validate responses and token
+                if (!this.token) {
+                    this.showError('Invalid survey token');
+                    return;
+                }
+
+                if (this.responses.answers.length === 0) {
+                    this.showError('Please answer at least one question');
+                    return;
+                }
+
                 try {
                     const response = await axios.post(
                         `https://responsemanagement-1.onrender.com/api/submit/${this.token}`, 
@@ -354,13 +281,26 @@
                         throw new Error(response.data.Message || 'Failed to submit survey');
                     }
                 } catch (error) {
-                    this.showError(error.message);
+                    this.showError(
+                        error.response 
+                            ? error.response.data.Message || 'Failed to submit survey' 
+                            : error.message
+                    );
                 }
             }
 
             showError(message) {
+                console.error('Survey Error:', message);
+                
                 this.loadingEl.classList.add('hidden');
-                this.errorEl.textContent = message;
+                this.surveyContentEl.classList.add('hidden');
+                
+                this.errorEl.innerHTML = `
+                    <div class="text-center">
+                        <p class="text-red-500 text-xl mb-4">${message}</p>
+                        <p class="text-gray-600">Please check the survey link and try again.</p>
+                    </div>
+                `;
                 this.errorEl.classList.remove('hidden');
             }
 
